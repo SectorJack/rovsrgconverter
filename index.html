@@ -1,0 +1,251 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="ASCII">
+    <!-- Bootstrap CSS -->
+    <link href="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css" rel="stylesheet">
+    
+		<!-- === Discord Embed Meta Tags === -->
+	<meta property="og:title" content="RoVSRG Chart Converter">
+	<meta property="og:description" content="Convert osu!mania charts to rosu!mania V9 format">
+	<meta property="og:url" content="https://your-username.github.io">
+	<meta property="og:type" content="website">
+	<meta property="og:image" content="https://raw.githubusercontent.com/SectorJack/rovsrgconverter/refs/heads/main/cerulean.png">
+	<meta property="og:site_name" content="RoVSRG Chart Converter">
+	<meta name="theme-color" content="#6600ff">
+	
+    <style>
+        body {
+            padding: 20px;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+        }
+        
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+        }
+        
+        textarea {
+            resize: none;
+            transition: all 0.2s ease;
+        }
+        
+        textarea.form-control {
+            font-family: monospace;
+            font-size: 14px;
+        }
+        
+        #in.drag-over {
+            background-color: #f8f9fa;
+            border: 2px dashed #6c757d !important;
+            box-shadow: 0 0 8px rgba(108, 117, 125, 0.3);
+        }
+        
+        .notification {
+            position: fixed;
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            background-color: #333;
+            color: white;
+            padding: 12px 24px;
+            border-radius: 4px;
+            z-index: 1000;
+            opacity: 0;
+            transition: opacity 0.3s ease;
+            pointer-events: none;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            max-width: 80%;
+            text-align: center;
+        }
+        
+        .notification.show {
+            opacity: 1;
+        }
+        
+        .notification.success {
+            background-color: #28a745;
+        }
+        
+        .notification.error {
+            background-color: #dc3545;
+        }
+        
+        .button-container {
+            display: flex;
+            justify-content: center;
+            gap: 10px;
+            margin: 20px 0;
+        }
+        
+        .auto-convert-checkbox {
+            margin: 15px 0;
+            text-align: center;
+        }
+        
+        @media (max-width: 576px) {
+            .button-container {
+                flex-direction: column;
+                align-items: center;
+            }
+            
+            .button-container .btn {
+                width: 100%;
+                margin-bottom: 10px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <!-- Notification element -->
+    <div id="notification" class="notification"></div>
+
+    <div class="container">
+        <h2 class="text-center my-4">RoVSRG osu!mania to rosu!mania Chart Converter</h2>
+        <div class="form-group">
+            <label for="in">Input (Drag & drop files here)</label>
+            <textarea id="in" class="form-control" rows="10"></textarea>
+        </div>
+        
+        <div class="text-center my-3">
+            <button id="submit" class="btn btn-primary">CONVERT</button>
+        </div>
+        
+        <!-- New auto-convert checkbox -->
+        <div class="auto-convert-checkbox form-check">
+            <input type="checkbox" class="form-check-input" id="autoConvert">
+            <label class="form-check-label" for="autoConvert">Convert & Compress Automatically</label>
+        </div>
+        
+        <div class="form-group">
+            <label for="out">Output</label>
+            <textarea id="out" class="form-control" rows="10" readonly></textarea>
+        </div>
+        
+        <div class="button-container">
+            <button id="compress" class="btn btn-success">COMPRESS OUTPUT</button>
+            <button id="copy" class="btn btn-secondary">COPY TO CLIPBOARD</button>
+        </div>
+    </div>
+
+    <script>
+        var module = {};
+        module.__exports = {};
+        module.export = function(name, obj) {
+            if (module.__exports[name] != null) {
+                throw "export already exists::" + name;
+            }
+            module.__exports[name] = obj;
+        };
+        module.require = function(name) {
+            if (module.__exports[name] == null) {
+                throw "require cannot find::" + name;
+            }
+            return module.__exports[name];
+        };
+    </script>
+    <script src="osuparser.js"></script>
+    <script src="format.js"></script>
+    <script src="osu_to_lua.js"></script>
+    <script src="jquery.js"></script>
+    <script src="zlib91.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/pako@2.1.0/dist/pako.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/base91@0.0.5/lib/base91.min.js"></script>
+    <script>
+        $(function() {
+            function showNotification(message, isError = false) {
+                const notification = document.getElementById("notification");
+                notification.textContent = message;
+                notification.className = `notification ${isError ? 'error' : 'success'}`;
+                
+                notification.classList.add("show");
+                setTimeout(() => {
+                    notification.classList.remove("show");
+                }, 3000);
+            }
+
+            function performConversion() {
+                $("#out").val("converting...");
+                try {
+                    const osu_file_str = $("#in").val();
+                    const converted = module.require("osu_to_lua")(osu_file_str);
+                    $("#out").val(converted);
+                    showNotification("Conversion complete!");
+
+                    if ($("#autoConvert").is(":checked")) {
+                        setTimeout(() => {
+                            performCompression();
+                        }, 100);
+                    }
+                } catch (err) {
+                    console.error('Conversion error:', err);
+                    showNotification("Conversion failed!", true);
+                }
+            }
+
+            function performCompression() {
+                try {
+                    const output_str = $("#out").val();
+                    const compressed = compress(output_str);
+                    $("#out").val(compressed);
+                    showNotification("Output compressed!");
+                } catch (err) {
+                    console.error('Compression error:', err);
+                    showNotification("Compression failed!", true);
+                }
+            }
+
+            const inputTextarea = document.getElementById('in');
+            
+            inputTextarea.addEventListener('dragover', (e) => {
+                e.preventDefault();
+                inputTextarea.classList.add('drag-over');
+            });
+
+            inputTextarea.addEventListener('dragleave', () => {
+                inputTextarea.classList.remove('drag-over');
+            });
+
+            inputTextarea.addEventListener('drop', (e) => {
+                e.preventDefault();
+                inputTextarea.classList.remove('drag-over');
+                
+                const file = e.dataTransfer.files[0];
+                if (!file) return;
+                
+                const reader = new FileReader();
+                
+                reader.onload = (event) => {
+                    inputTextarea.value = event.target.result;
+                    showNotification(`File "${file.name}" loaded successfully!`);
+                    
+                    setTimeout(() => {
+                        performConversion();
+                    }, 100);
+                };
+                
+                reader.onerror = () => {
+                    showNotification("Error reading file!", true);
+                };
+                
+                reader.readAsText(file);
+            });
+
+            $("#submit").click(performConversion);
+            
+            $("#compress").click(performCompression);
+            
+            $("#copy").click(async function() {
+                try {
+                    const textToCopy = document.getElementById("out").value || document.getElementById("out").textContent;
+                    await navigator.clipboard.writeText(textToCopy);
+                    showNotification("Copied to clipboard!");
+                } catch (err) {
+                    console.error('Failed to copy: ', err);
+                    showNotification("Failed to copy to clipboard!", true);
+                }
+            });
+        });
+    </script>
+</body>
+</html>
