@@ -6,49 +6,39 @@ function get_common_bpm(hit_objects, timing_points) {
         return 0;
     }
 
-    let durations = {};
+    const orderedByDescending = hit_objects.sort((a, b) => b.startTime - a.startTime);
+    const lastHitObject = orderedByDescending[0];
+    let lastTime = lastHitObject.type == 2 ? lastHitObject.duration : lastHitObject.startTime;
 
-    let lastHitObject = hit_objects[hit_objects.length - 1];
-    let lastTime = lastHitObject.type == 2 ? lastHitObject.endTime : lastHitObject.startTime;
+    const durations = {};
+    for (let i = timing_points.length - 1; i >= 0; i--) {
+        const tp = timing_points[i];
 
-    let index = timing_points.length - 1;
-    while (true) {
-        if (index >= 0) {
-            let point = timing_points[index];
-
-            if (point.startTime > lastTime) {
-                index -= 1;
-                continue;
-            }
-
-            let duration = lastTime - (index == 0 ? 0 : point.startTime);
-            lastTime = point.startTime;
-
-            let tp_exist = durations[point.value];
-            if (tp_exist) {
-                durations[point.value] += duration;
-            } else {
-                durations[point.value] = duration;
-            }
-        } else {
-            break;
+        if (tp.startTime > lastTime) {
+            continue;
         }
 
-        index -= 1;
+        const duration = lastTime - (i == 0 ? 0 : tp.startTime);
+        lastTime = tp.startTime;
+
+        durations[tp.value] = (durations[tp.value] || 0) + duration;
     }
 
-    let sortedDurations = Object.entries(durations).sort((a, b) => b[1] - a[1]);
-
-    if (sortedDurations.length == 0) {
-        return 0;
+    if (durations.length == 0) {
+        return timing_points[0].value;
     }
 
-    let result = sortedDurations[0][0];
-    if (result == 0) {
-        console.warn("BREAK");
+    let currentDuration = 0;
+    let currentBPM = 0.0;
+
+    for (const [bpm, duration] of Object.entries(durations)) {
+        if (duration > currentDuration) {
+            currentDuration = duration;
+            currentBPM = parseFloat(bpm);
+        }
     }
 
-    return parseFloat(result);
+    return currentBPM;
 }
 
 function normalize_sv(hit_objects, bpms, svs) {
