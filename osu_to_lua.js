@@ -34,149 +34,170 @@ function get_common_bpm(hit_objects, timing_points) {
     for (const [bpm, duration] of Object.entries(durations)) {
         if (duration > currentDuration) {
             currentDuration = duration;
-            currentBPM = parseFloat(bpm);
+            currentBPM = Math.fround(parseFloat(bpm));
         }
     }
 
     return currentBPM;
 }
 
+function to_float(value) {
+    const f32 = new Float32Array(1);
+    f32[0] = value;
+
+    return f32[0];
+}
+
+function compare_equal_float(a, b) {
+    const epsilon = 1e-10;
+
+    return Math.abs(a - b) < epsilon;
+}
+
+function compare_not_equal_float(a, b) {
+    return !compare_equal_float(a, b);
+}
+
 function normalize_sv(hit_objects, bpms, svs) {
     let normalizedSVResults = [];
-    let baseBPM = get_common_bpm(hit_objects, bpms);
 
+    const baseBPM = get_common_bpm(hit_objects, bpms);
     let currentBPM = bpms[0].value;
-    let currentSvIndex = 0;
+    let currentSVIndex = 0;
 
+    let currentSVMultiplier = 1.0;
     let currentSVStartTime = null;
-    let currentSVMultiplier = 1;
     let currentAdjustedMultiplier = null;
-    let initialSVMultiplier = null;
+    let initialSliderVelocity = null;
 
     for (let i = 0; i < bpms.length; i++) {
-        let timing = bpms[i];
-        let nextTimingHasSameTimestamp = false;
-        if ((i + 1) < bpms.length && bpms[i + 1].startTime == timing.startTime) {
-            nextTimingHasSameTimestamp = true;
-        }
+        const tp = bpms[i];
+
+        const isExactTimeExists = (i + 1) < bpms.length && bpms[i + 1].startTime == tp.startTime;
 
         while (true) {
-            if (currentSvIndex >= svs.length) {
+            if (currentSVIndex >= svs.length) {
                 break;
             }
 
-            let sv = svs[currentSvIndex];
-            if (sv.startTime > timing.startTime) {
+            const sv = svs[currentSVIndex];
+            if (sv.startTime > tp.startTime) {
                 break;
             }
 
-            if (nextTimingHasSameTimestamp && sv.startTime == timing.startTime) {
+            if (isExactTimeExists && sv.startTime === tp.startTime) {
                 break;
             }
 
-            if (sv.startTime < timing.startTime) {
-                let multiplier = sv.value * (currentBPM / baseBPM);
+            if (sv.startTime < tp.startTime) {
+                const multiplier = Math.fround(sv.value * (currentBPM / baseBPM));
+
                 if (currentAdjustedMultiplier == null) {
                     currentAdjustedMultiplier = multiplier;
-                    initialSVMultiplier = multiplier;
+                    initialSliderVelocity = multiplier;
                 }
+                console.log(`multiplier != currentAdjustedMultiplier) ${multiplier} ${currentAdjustedMultiplier} ${multiplier != currentAdjustedMultiplier}`);
 
                 if (multiplier != currentAdjustedMultiplier) {
-                    normalizedSVResults.push({
-                        startTime: sv.startTime,
-                        value: multiplier
-                    });
+                    const timing = {
+                        startTime: tp.startTime,
+                        value: multiplier,
+                    }
+
+                    normalizedSVResults.push(timing);
 
                     currentAdjustedMultiplier = multiplier;
                 }
+
             }
 
             currentSVStartTime = sv.startTime;
             currentSVMultiplier = sv.value;
-            currentSvIndex += 1;
+            currentSVIndex++;
         }
 
-        if (currentSVStartTime == null || currentSVStartTime < timing.startTime) {
-            currentSVMultiplier = 1;
+        if (currentSVStartTime == null || currentSVStartTime < tp.startTime) {
+            currentSVMultiplier = 1.0;
         }
 
-        currentBPM = timing.value;
+        currentBPM = tp.value;
 
-        let multiplier1 = currentSVMultiplier * (currentBPM / baseBPM);
+        const multiplier = Math.fround(currentSVMultiplier * (currentBPM / baseBPM));
 
         if (currentAdjustedMultiplier == null) {
-            currentAdjustedMultiplier = multiplier1;
-            initialSVMultiplier = multiplier1;
+            currentAdjustedMultiplier = multiplier;
+            initialSliderVelocity = currentSVMultiplier;
         }
 
-        if (multiplier1 != currentAdjustedMultiplier) {
-            normalizedSVResults.push({
-                startTime: timing.startTime,
-                value: multiplier1
-            });
-    
-            currentAdjustedMultiplier = multiplier1;
-        }
-    }
-
-    while (currentSvIndex < svs.length) {
-        let sv = svs[currentSvIndex];
-        let multiplier = sv.value * (currentBPM / baseBPM);
-
-        if (currentAdjustedMultiplier == null) {
-            throw new Error("currentAdjustedMultiplier:null != null");
-        }
-
+        console.log(`multiplier != currentAdjustedMultiplier) ${multiplier} ${currentAdjustedMultiplier} ${multiplier != currentAdjustedMultiplier}`);
         if (multiplier != currentAdjustedMultiplier) {
-            normalizedSVResults.push({
-                startTime: sv.startTime,
-                value: multiplier
-            });
+            const timing = {
+                startTime: tp.startTime,
+                value: multiplier,
+            }
+
+            normalizedSVResults.push(timing);
 
             currentAdjustedMultiplier = multiplier;
         }
 
-        currentSvIndex += 1;
     }
 
-    let initialSliderVelocity = initialSVMultiplier || 1;
-    svs = normalizedSVResults;
+    for (; currentSVIndex < svs.length; currentSVIndex++) {
+        const sv = svs[currentSVIndex];
+        const multiplier = Math.fround(currentSV.value * (currentBPM / baseBPM));
+        
+        console.log(`multiplier != currentAdjustedMultiplier) ${multiplier} ${currentAdjustedMultiplier} ${multiplier != currentAdjustedMultiplier}`);
 
-    return { initialSliderVelocity, timing_points: svs };
-}
+        if (multiplier === currentAdjustedMultiplier) {
+            const timing = {
+                startTime: currentSVStartTime,
+                value: multiplier,
+            }
 
-module.export("osu_to_lua", function(osu_contents) {
-    var fileContents = ""
+            normalizedSVResults.push(timing);
 
-    function append(str, newline) {
-        if (newline == undefined || newline == true) {
-            fileContents += (str + "\n")
-        } else {
-            fileContents += str
+            currentAdjustedMultiplier = multiplier;
         }
     }
 
-    var beatmap = parser.parseContent(osu_contents)
+    console.log(`timing_points: ${JSON.stringify(normalizedSVResults)}`);
+
+    return { initialSliderVelocity: initialSliderVelocity || 1.0, timing_points: normalizedSVResults };
+}
+
+module.export("osu_to_lua", function(osu_contents) {
+    var fileContents = "";
+
+    function append(str, newline) {
+        if (newline == undefined || newline == true) {
+            fileContents += (str + "\n");
+        } else {
+            fileContents += str;
+        }
+    }
+
+    var beatmap = parser.parseContent(osu_contents);
     if (beatmap.general.mode != 3) {
-        append("ERROR: only supported mode: 3 (or osu!mania) only")
-        return fileContents
+        append("ERROR: only supported mode: 3 (or osu!mania) only");
+        return fileContents;
     }
 
     if (beatmap.hitObjects.length == 0) {
-        append("ERROR: empty hit objects")
-        return fileContents
+        append("ERROR: empty hit objects");
+        return fileContents;
     }
     
     //append(beatmap.difficulty.circleSize.toString())
-	
-	var content = {
-		"TimingPoints": {
-			"BPM": [],
-			"SV": [],
+    
+    var content = {
+        "TimingPoints": {
+            "BPM": [],
+            "SV": [],
             "StartSV": 1
-		},
-		"HitObjects": []
-	}
+        },
+        "HitObjects": []
+    };
 
     let BPM = [];
     let SV = [];
@@ -202,26 +223,33 @@ module.export("osu_to_lua", function(osu_contents) {
         }
     }
 
+    // Sort BPM and SV by startTime
+    BPM.sort((a, b) => a.startTime - b.startTime);
+    SV.sort((a, b) => a.startTime - b.startTime);
+
     let normalized = normalize_sv(beatmap.hitObjects, BPM, SV);
-    content.TimingPoints.StartSV = normalized.initialSliderVelocity
+    content.TimingPoints.StartSV = normalized.initialSliderVelocity;
+
+    // Sort HitObjects by startTime
+    beatmap.hitObjects.sort((a, b) => a.startTime - b.startTime);
 
     for (let i = 0; i < BPM.length; i++) {
         let timing = BPM[i];
-        content.TimingPoints.BPM.push([timing.startTime, timing.value])
+        content.TimingPoints.BPM.push([timing.startTime, timing.value]);
     }
 
     for (let i = 0; i < normalized.timing_points.length; i++) {
         let timing = normalized.timing_points[i];
-        content.TimingPoints.SV.push([timing.startTime, timing.value])
+        content.TimingPoints.SV.push([timing.startTime, timing.value]);
     }
-	
+    
     for (let i = 0; i < beatmap.hitObjects.length; i++) {
-        let hitObject = beatmap.hitObjects[i]
-		var entry = [hitObject.startTime, hitObject.lane, hitObject.type, hitObject.duration]
-		content.HitObjects.push(entry)
-	}
-	
-	append(JSON.stringify(content, null, "\t"))
-	
-    return fileContents
+        let hitObject = beatmap.hitObjects[i];
+        var entry = [hitObject.startTime, hitObject.lane, hitObject.type, hitObject.duration];
+        content.HitObjects.push(entry);
+    }
+    
+    append(JSON.stringify(content, null, "\t"));
+    
+    return fileContents;
 })
