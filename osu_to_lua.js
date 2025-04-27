@@ -145,7 +145,7 @@ function normalize_sv(hit_objects, bpms, svs) {
 
     for (; currentSVIndex < svs.length; currentSVIndex++) {
         const sv = svs[currentSVIndex];
-        const multiplier = Math.fround(currentSV.value * (currentBPM / baseBPM));
+        const multiplier = Math.fround(sv.value * (currentBPM / baseBPM));
         
         console.log(`multiplier != currentAdjustedMultiplier) ${multiplier} ${currentAdjustedMultiplier} ${multiplier != currentAdjustedMultiplier}`);
 
