@@ -151,7 +151,7 @@ function normalize_sv(hit_objects, bpms, svs) {
 
         if (multiplier === currentAdjustedMultiplier) {
             const timing = {
-                startTime: currentSVStartTime,
+                startTime: sv.startTime,
                 value: multiplier,
             }
 
