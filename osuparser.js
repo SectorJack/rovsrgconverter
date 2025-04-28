@@ -209,8 +209,8 @@
        if (parsed.length < 2) return;
 
        var timingPoint = {
-          startTime: parseFloat(parsed[0]),
-          value: parseFloat(parsed[1]),
+          startTime: Math.fround(parseFloat(parsed[0])),
+          value: Math.fround(parseFloat(parsed[1])),
           meter: parsed.length > 2 ? parseInt(parsed[2]) : 4,
           sampleSet: parsed.length > 3 ? parseInt(parsed[3]) : 0,
           sampleIndex: parsed.length > 4 ? parseInt(parsed[4]) : 0,

@@ -6,164 +6,153 @@ function get_common_bpm(hit_objects, timing_points) {
         return 0;
     }
 
-    const orderedByDescending = hit_objects.sort((a, b) => b.startTime - a.startTime);
-    const lastHitObject = orderedByDescending[0];
+    let durations = {};
+
+    let lastHitObject = hit_objects[hit_objects.length - 1];
     let lastTime = lastHitObject.type == 2 ? lastHitObject.duration : lastHitObject.startTime;
 
-    const durations = {};
-    for (let i = timing_points.length - 1; i >= 0; i--) {
-        const tp = timing_points[i];
+    let index = timing_points.length - 1;
+    while (true) {
+        if (index >= 0) {
+            let point = timing_points[index];
 
-        if (tp.startTime > lastTime) {
-            continue;
+            if (point.startTime > lastTime) {
+                index -= 1;
+                continue;
+            }
+
+            let duration = lastTime - (index == 0 ? 0 : point.startTime);
+            lastTime = point.startTime;
+
+            let tp_exist = durations[point.value];
+            if (tp_exist) {
+                durations[point.value] += duration;
+            } else {
+                durations[point.value] = duration;
+            }
+        } else {
+            break;
         }
 
-        const duration = lastTime - (i == 0 ? 0 : tp.startTime);
-        lastTime = tp.startTime;
-
-        durations[tp.value] = (durations[tp.value] || 0) + duration;
+        index -= 1;
     }
 
-    if (durations.length == 0) {
-        return timing_points[0].value;
+    let sortedDurations = Object.entries(durations).sort((a, b) => b[1] - a[1]);
+
+    if (sortedDurations.length == 0) {
+        return 0;
     }
 
-    let currentDuration = 0;
-    let currentBPM = 0.0;
-
-    for (const [bpm, duration] of Object.entries(durations)) {
-        if (duration > currentDuration) {
-            currentDuration = duration;
-            currentBPM = Math.fround(parseFloat(bpm));
-        }
+    let result = sortedDurations[0][0];
+    if (result == 0) {
+        console.warn("BREAK");
     }
 
-    return currentBPM;
-}
-
-function to_float(value) {
-    const f32 = new Float32Array(1);
-    f32[0] = value;
-
-    return f32[0];
-}
-
-function compare_equal_float(a, b) {
-    const epsilon = 1e-10;
-
-    return Math.abs(a - b) < epsilon;
-}
-
-function compare_not_equal_float(a, b) {
-    return !compare_equal_float(a, b);
+    return parseFloat(result);
 }
 
 function normalize_sv(hit_objects, bpms, svs) {
     let normalizedSVResults = [];
+    let baseBPM = get_common_bpm(hit_objects, bpms);
 
-    const baseBPM = get_common_bpm(hit_objects, bpms);
     let currentBPM = bpms[0].value;
-    let currentSVIndex = 0;
+    let currentSvIndex = 0;
 
-    let currentSVMultiplier = 1.0;
     let currentSVStartTime = null;
+    let currentSVMultiplier = 1;
     let currentAdjustedMultiplier = null;
-    let initialSliderVelocity = null;
+    let initialSVMultiplier = null;
 
     for (let i = 0; i < bpms.length; i++) {
-        const tp = bpms[i];
-
-        const isExactTimeExists = (i + 1) < bpms.length && bpms[i + 1].startTime == tp.startTime;
+        let timing = bpms[i];
+        let nextTimingHasSameTimestamp = false;
+        if ((i + 1) < bpms.length && bpms[i + 1].startTime == timing.startTime) {
+            nextTimingHasSameTimestamp = true;
+        }
 
         while (true) {
-            if (currentSVIndex >= svs.length) {
+            if (currentSvIndex >= svs.length) {
                 break;
             }
 
-            const sv = svs[currentSVIndex];
-            if (sv.startTime > tp.startTime) {
+            let sv = svs[currentSvIndex];
+            if (sv.startTime > timing.startTime) {
                 break;
             }
 
-            if (isExactTimeExists && sv.startTime === tp.startTime) {
+            if (nextTimingHasSameTimestamp && sv.startTime == timing.startTime) {
                 break;
             }
 
-            if (sv.startTime < tp.startTime) {
-                const multiplier = Math.fround(sv.value * (currentBPM / baseBPM));
-
+            if (sv.startTime < timing.startTime) {
+                let multiplier = sv.value * (currentBPM / baseBPM);
                 if (currentAdjustedMultiplier == null) {
                     currentAdjustedMultiplier = multiplier;
-                    initialSliderVelocity = multiplier;
+                    initialSVMultiplier = multiplier;
                 }
-                console.log(`multiplier != currentAdjustedMultiplier) ${multiplier} ${currentAdjustedMultiplier} ${multiplier != currentAdjustedMultiplier}`);
 
                 if (multiplier != currentAdjustedMultiplier) {
-                    const timing = {
-                        startTime: tp.startTime,
-                        value: multiplier,
-                    }
-
-                    normalizedSVResults.push(timing);
+                    normalizedSVResults.push({
+                        startTime: sv.startTime,
+                        value: multiplier
+                    });
 
                     currentAdjustedMultiplier = multiplier;
                 }
-
             }
 
             currentSVStartTime = sv.startTime;
             currentSVMultiplier = sv.value;
-            currentSVIndex++;
+            currentSvIndex += 1;
         }
 
-        if (currentSVStartTime == null || currentSVStartTime < tp.startTime) {
-            currentSVMultiplier = 1.0;
+        if (currentSVStartTime == null || currentSVStartTime < timing.startTime) {
+            currentSVMultiplier = 1;
         }
 
-        currentBPM = tp.value;
+        currentBPM = timing.value;
 
-        const multiplier = Math.fround(currentSVMultiplier * (currentBPM / baseBPM));
+        let multiplier1 = currentSVMultiplier * (currentBPM / baseBPM);
 
         if (currentAdjustedMultiplier == null) {
-            currentAdjustedMultiplier = multiplier;
-            initialSliderVelocity = currentSVMultiplier;
+            currentAdjustedMultiplier = multiplier1;
+            initialSVMultiplier = multiplier1;
         }
 
-        console.log(`multiplier != currentAdjustedMultiplier) ${multiplier} ${currentAdjustedMultiplier} ${multiplier != currentAdjustedMultiplier}`);
+        if (multiplier1 != currentAdjustedMultiplier) {
+            normalizedSVResults.push({
+                startTime: timing.startTime,
+                value: multiplier1
+            });
+    
+            currentAdjustedMultiplier = multiplier1;
+        }
+    }
+
+    while (currentSvIndex < svs.length) {
+        let sv = svs[currentSvIndex];
+        let multiplier = sv.value * (currentBPM / baseBPM);
+
+        if (currentAdjustedMultiplier == null) {
+            throw new Error("currentAdjustedMultiplier:null != null");
+        }
+
         if (multiplier != currentAdjustedMultiplier) {
-            const timing = {
-                startTime: tp.startTime,
-                value: multiplier,
-            }
-
-            normalizedSVResults.push(timing);
-
-            currentAdjustedMultiplier = multiplier;
-        }
-
-    }
-
-    for (; currentSVIndex < svs.length; currentSVIndex++) {
-        const sv = svs[currentSVIndex];
-        const multiplier = Math.fround(sv.value * (currentBPM / baseBPM));
-        
-        console.log(`multiplier != currentAdjustedMultiplier) ${multiplier} ${currentAdjustedMultiplier} ${multiplier != currentAdjustedMultiplier}`);
-
-        if (multiplier === currentAdjustedMultiplier) {
-            const timing = {
+            normalizedSVResults.push({
                 startTime: sv.startTime,
-                value: multiplier,
-            }
-
-            normalizedSVResults.push(timing);
+                value: multiplier
+            });
 
             currentAdjustedMultiplier = multiplier;
         }
+
+        currentSvIndex += 1;
     }
 
-    console.log(`timing_points: ${JSON.stringify(normalizedSVResults)}`);
+    let initialSliderVelocity = initialSVMultiplier || 1;
+    svs = normalizedSVResults;
 
-    return { initialSliderVelocity: initialSliderVelocity || 1.0, timing_points: normalizedSVResults };
+    return { initialSliderVelocity, timing_points: svs };
 }
 
 module.export("osu_to_lua", function(osu_contents) {
@@ -187,8 +176,6 @@ module.export("osu_to_lua", function(osu_contents) {
         append("ERROR: empty hit objects");
         return fileContents;
     }
-    
-    //append(beatmap.difficulty.circleSize.toString())
     
     var content = {
         "TimingPoints": {
